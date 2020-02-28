@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Vault Workshops</title>
+    <meta charset="utf-8">
+    <style>
+      @import url(https://fonts.googleapis.com/css?family=Yanone+Kaffeesatz);
+      @import url(https://fonts.googleapis.com/css?family=Droid+Serif:400,700,400italic);
+      @import url(https://fonts.googleapis.com/css?family=Hack);
+
+      body { font-family: 'Droid Serif'; }
+      h1, h2, h3, h4 {
+        font-family: 'Yanone Kaffeesatz';
+        font-weight: normal;
+      }
+      .remark-code, .remark-inline-code { font-family: 'Ubuntu Mono'; }
+      a, a > code {
+        color: #880000;
+        text-decoration: none;
+      }
+    </style>
+  </head>
+  <body>
+    <textarea id="source">
+
+class: center, middle
+
+# Vault
+
+### Manage Secrets and Protect Sensitive Data
+
+---
+
+## Teams
+
+- slack: `#vault-workshops`
+- [Team A](https://github.com/orgs/Selleo/teams/team-a/members)
+- [Team B](https://github.com/orgs/Selleo/teams/team-b/members)
+- [Team C](https://github.com/orgs/Selleo/teams/team-c/members)
+
+---
+
+## Features
+
+- key / value stores
+- SSH (OTP / CA)
+- credentials (AWS, GCP, GCP KMS, Azure, Consul)
+- TOTP (eg. databases)
+- JWT as an auth method
+- one time secrets
+- UI / CLI / JSON REST API
+
+## Installation
+
+```bash
+asdf plugin-add vault https://github.com/Banno/asdf-hashicorp.git
+asdf install vault 1.3.2
+asdf current vault 1.3.2
+```
+
+or [visit downloads section](https://www.vaultproject.io/downloads/)
+
+---
+
+## Server setup (*already done on vault.selleo.dev*)
+
+```bash
+$ vault auth enable github
+$ vault write auth/github/config organization=Selleo
+```
+
+> **NOTE** a policy can be assigned to a team or user
+
+---
+
+## Vault's users
+
+- GitHub user
+- AppRole (CICD, Kubernetes, Terraform)
+- Username & password
+- tokens*
+
+### [Capabilities](https://www.vaultproject.io/docs/concepts/policies/#capabilities)
+
+- `create`
+- `read`
+- `update`
+- `delete`
+- `list`
+- `sudo`
+- `deny`
+
+```bash
+path "secret/foo" {
+  capabilities = ["read"]
+}
+```
+
+---
+
+## Policies | GitHub Oraganization: Selleo
+
+```
+GitHub: Oraganization Selleo
+  - General (*all members of Selleo organization*)
+  - Sales
+    - adam
+    - krzysztof
+  - ICT
+    - katarzyna
+  - Developers
+    - michal
+    - piotr
+    - DevOps
+      - Vault
+        - robert
+        - dawid
+    - Project XY
+        - anna
+    - Project AB
+        - zofia
+        - foobar
+```
+
+---
+
+## [Policies](https://www.vaultproject.io/docs/concepts/policies/#policy-syntax)
+
+- grant or revoke access to a secret store
+
+```bash
+path "secret/foo" {
+  capabilities = ["read"]
+}
+
+path "secret/*" {
+  capabilities = ["create", "read", "update", "delete", "list"]
+}
+
+path "secret/super-secret" {
+  capabilities = ["deny"]
+}
+
+path "secret/restricted" {
+  capabilities = ["create"]
+  allowed_parameters = {
+    "foo" = []
+    "bar" = ["zip", "zap"]
+  }
+}
+```
+
+---
+
+## Policies
+
+```bash
+# Permit reading only "secret/foo". An attached token cannot read "secret/food"
+# or "secret/foo/bar".
+path "secret/foo" {
+  capabilities = ["read"]
+}
+
+# Permit reading everything under "secret/bar". An attached token could read
+# "secret/bar/zip", "secret/bar/zip/zap", but not "secret/bars/zip".
+path "secret/bar/*" {
+  capabilities = ["read"]
+}
+
+# Permit reading everything prefixed with "zip-". An attached token could read
+# "secret/zip-zap" or "secret/zip-zap/zong", but not "secret/zip/zap
+path "secret/zip-*" {
+  capabilities = ["read"]
+}
+```
+
+---
+
+## Policies
+
+```bash
+# Permit reading the "teamb" path under any top-level path under secret/
+path "secret/+/teamb" {
+  capabilities = ["read"]
+}
+
+# Permit reading secret/foo/bar/teamb, secret/bar/foo/teamb, etc.
+path "secret/+/+/teamb" {
+  capabilities = ["read"]
+}
+
+path "secret/super-secret" {
+  capabilities = ["deny"]
+}
+```
+
+---
+
+## Applying policies
+
+```bash
+$ vault write auth/github/map/teams/lead-generation value=lead-generation-policy
+```
+
+```bash
+$ vault write auth/github/map/teams/vault value=admin-policy
+```
+
+```bash
+$ vault write auth/github/map/users/dawid value=admin-policy
+```
+
+```bash
+$ vault write auth/github/map/users/dawid value=lead-generation-policy
+```
+---
+
+## Applying policies
+
+```bash
+$ vault write auth/userpass/users/foo password="bar" policies="dev-readonly"
+```
+
+```bash
+$ vault token create -policy=dev-readonly -policy=dev-readonly
+```
+
+```bash
+$ vault write auth/github/map/teams/devpath value=dev-readonly
+```
+
+```bash
+$ vault write auth/github/map/users/foo value=dev-readonly
+```
+
+---
+
+## CLI
+
+```bash
+$ vault login -method=github -address=https://vault.selleo.dev/ -token=$GITHUB_TOKEN
+```
+
+```bash
+$ vault login -address=https://vault.selleo.dev/ -token=$VAULT_TOKEN
+```
+
+```bash
+$ vault login -method=userpass -address=https://vault.selleo.dev/ username=foo password=bar
+```
+
+> **NOTE** a pseudo CLI also works from Web.
+
+---
+
+class: middle, center
+
+# Questions?
+
+---
+
+## Authorization and Authentication (AAA;)
+
+GitHub
+- [generate a github token](https://github.com/settings/tokens) - https://github.com/settings/tokens
+  - github.com
+  - avatar
+  - settings
+  - developer tools
+  - personal access tokens
+  - generate new token
+- name: vault workshops
+- permissions `admin:org read:org`
+- [https://vault.selleo.dev](https://vault.selleo.dev/ui/vault/auth?with=github)
+- `$ vault`
+
+---
+
+## Web
+
+### [Wrap](https://vault.selleo.dev/ui/vault/tools/wrap)
+
+- one time secret - expires in a given time or after **the first read**
+- only JSON format
+
+```json
+{
+  "top": "secret",
+  "secret": [ "my", "password", {"foo": "bar"} ],
+  "hmm": "buka!"
+}
+```
+
+```json
+{"a": "b"}
+```
+
+---
+
+## Web
+
+### [Unwrap](https://vault.selleo.dev/ui/vault/tools/unwrap)
+
+- reads wrapped data
+
+---
+
+## Policy **team-a**
+
+```hcl
+path "team-a/*"
+{
+  capabilities = ["create", "read", "update", "delete", "list", "sudo"]
+}
+
+path "team-b/*"
+{
+  capabilities = ["read", "list"]
+}
+
+path "team-c/*"
+{
+  capabilities = ["deny"]
+}
+```
+
+---
+
+## Team A
+
+- dołączyć do **`Team A`** na GitHub (przelogować się)
+- secret: **team-a**
+  - utworzyć secret (np. imie-nazwisko - tak, aby łatwo się szukało ;)
+    - path - nazwa secret-u
+    - maximum number of versions: 10 (default)
+    - key - value (np. `photoshop serial number` - `XYZ00123`)
+  - edytować secret (najlepiej nie swój)
+- secret: **team-b**
+  - edytować/usunąć dane
+- secret: **team-c**
+  - przeczytać dane
+
+---
+
+## Policy **team-b**
+
+```hcl
+path "team-a/*"
+{
+  capabilities = ["deny"]
+}
+
+path "team-b/*"
+{
+  capabilities = ["create", "read", "update", "list"]
+}
+
+path "team-c/*"
+{
+  capabilities = ["deny"]
+}
+```
+
+---
+## Team B
+
+- dołączyć do **`Team B`** na GitHub (przelogować się)
+- secret: **team-a**
+  - przeczytać dane
+- secret: **team-b**
+  - dodać i edytować secret (najlepiej nie swój)
+  - usunąć secret
+- secret: **team-c**
+  - przeczytać dane
+
+---
+
+## Policy **team-c**
+
+```hcl
+path "team-a/*"
+{
+  capabilities = ["create", "read", "update", "delete", "list", "sudo"]
+}
+
+path "team-b/*"
+{
+  capabilities = ["create", "read", "update", "delete", "list", "sudo"]
+}
+
+path "team-c/*"
+{
+  capabilities = ["create", "read", "update", "delete", "list", "sudo"]
+}
+```
+
+---
+
+## Team C
+
+- dołączyć do **`Team C`** na GitHub (przelogować się)
+- secret: **team-a**
+  - przeczytać dane
+- secret: **team-b**
+  - dodać i edytować secret (najlepiej nie swój)
+  - usunąć secret
+- secret: **team-c**
+  - przeczytać dane
+
+---
+
+class: middle, center
+
+# Questions?
+
+---
+
+class: middle, center
+
+# Thanks!
+
+[https://bartlomiejdanek.github.io/vault-workshops](https://bartlomiejdanek.github.io/vault-workshops)
+
+    </textarea>
+    <script src="https://remarkjs.com/downloads/remark-latest.min.js">
+    </script>
+    <script>
+      var slideshow = remark.create();
+    </script>
+  </body>
+</html>
